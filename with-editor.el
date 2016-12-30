@@ -443,21 +443,25 @@ ENVVAR is provided then bind that environment variable instead.
      ,@body))
 
 (defun with-editor-server-window ()
+  (prog2 (message "with-editor-server-window...")
   (or (and buffer-file-name
            (cdr (--first (string-match-p (car it) buffer-file-name)
                          with-editor-server-window-alist)))
-      server-window))
+      server-window)
+  (message "with-editor-server-window...done")))
 
 (defun server-switch-buffer--with-editor-server-window-alist
     (fn &optional next-buffer killed-one filepos)
   "Honor `with-editor-server-window-alist' (which see)."
+  (prog2 (message "server-switch-buffer--with-editor-server-window-alist...")
   (let ((server-window (with-current-buffer
                            (or next-buffer (current-buffer))
                          (when with-editor-mode
                            (setq with-editor-previous-winconf
                                  (current-window-configuration)))
                          (with-editor-server-window))))
-    (funcall fn next-buffer killed-one filepos)))
+    (funcall fn next-buffer killed-one filepos))
+  (message "server-switch-buffer--with-editor-server-window-alist...done")))
 
 (advice-add 'server-switch-buffer :around
             'server-switch-buffer--with-editor-server-window-alist)
@@ -473,6 +477,7 @@ instead of `set-process-filter' inside `with-editor' forms.
 When the `default-directory' is located on a remote machine,
 then also manipulate PROGRAM and PROGRAM-ARGS in order to set
 the appropriate editor environment variable."
+  (prog2 (message "start-file-process--with-editor-process-filter...")
   (if (not with-editor--envvar)
       (apply fn name buffer program program-args)
     (when (file-remote-p default-directory)
@@ -484,7 +489,8 @@ the appropriate editor environment variable."
     (let ((process (apply fn name buffer program program-args)))
       (set-process-filter process 'with-editor-process-filter)
       (process-put process 'default-dir default-directory)
-      process)))
+      process))
+  (message "start-file-process--with-editor-process-filter...done")))
 
 (advice-add 'start-file-process :around
             'start-file-process--with-editor-process-filter)
@@ -498,17 +504,20 @@ Do so by wrapping the two filter functions using a lambda, which
 becomes the actual filter.  It calls `with-editor-process-filter'
 first, passing t as NO-STANDARD-FILTER.  Then it calls FILTER,
 which may or may not insert the text into the PROCESS' buffer."
+  (prog2 (message "with-editor-set-process-filter...")
   (set-process-filter
    process
    (if (eq (process-filter process) 'with-editor-process-filter)
        `(lambda (proc str)
           (,filter proc str)
           (with-editor-process-filter proc str t))
-     filter)))
+     filter))
+  (message "with-editor-set-process-filter...done")))
 
 (defvar with-editor-filter-visit-hook nil)
 
 (defun with-editor-output-filter (string)
+  (prog2 (message "with-editor-output-filter...")
   (save-match-data
     (if (string-match "^WITH-EDITOR: \\([0-9]+\\) OPEN \\(.+?\\)\r?$" string)
         (let ((pid  (match-string 1 string))
@@ -528,26 +537,31 @@ which may or may not insert the text into the PROCESS' buffer."
                      (current-buffer))
             (kill-local-variable 'server-window))
           nil)
-      string)))
+      string))
+  (message "with-editor-output-filter...done")))
 
 (defun with-editor-process-filter
     (process string &optional no-default-filter)
   "Listen for edit requests by child processes."
+  (prog2 (message "with-editor-process-filter...")
   (let ((default-directory (process-get process 'default-dir)))
     (with-editor-output-filter string))
   (unless no-default-filter
-    (internal-default-process-filter process string)))
+    (internal-default-process-filter process string))
+  (message "with-editor-process-filter...done")))
 
 (advice-add 'server-visit-files :after
             'server-visit-files--with-editor-file-name-history-exclude)
 
 (defun server-visit-files--with-editor-file-name-history-exclude
     (files _proc &optional _nowait)
+  (prog2 (message "server-visit-files--with-editor-file-name-history-exclude...")
   (dolist (file files)
     (setq  file (car file))
     (when (--any (string-match-p it file)
                  with-editor-file-name-history-exclude)
-      (setq file-name-history (delete file file-name-history)))))
+      (setq file-name-history (delete file file-name-history))))
+  (message "server-visit-files--with-editor-file-name-history-exclude...done")))
 
 ;;; Augmentations
 
