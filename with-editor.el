@@ -82,8 +82,18 @@
 (require 'cl-lib)
 (require 'dash)
 (require 'server)
-(require 'tramp)
-(require 'tramp-sh nil t)
+(eval-when-compile
+  (require 'tramp)
+  (require 'tramp-sh nil t)) ; TODO what for?
+(declare-function comint-output-filter 'comint)
+(declare-function tramp-dissect-file-name 'tramp)
+(declare-function tramp-file-name-hop 'tramp)
+(declare-function tramp-file-name-host 'tramp)
+(declare-function tramp-file-name-localname 'tramp)
+(declare-function tramp-file-name-method 'tramp)
+(declare-function tramp-file-name-user 'tramp)
+(declare-function tramp-make-tramp-file-name 'tramp)
+(declare-function tramp-tramp-file-p 'tramp)
 
 (and (require 'async-bytecomp nil t)
      (memq 'magit (bound-and-true-p async-bytecomp-allowed-packages))
@@ -473,6 +483,9 @@ instead of `set-process-filter' inside `with-editor' forms.
 When the `default-directory' is located on a remote machine,
 then also manipulate PROGRAM and PROGRAM-ARGS in order to set
 the appropriate editor environment variable."
+  ;; TODO here?
+  (require 'tramp)
+  (require 'tramp-sh nil t)
   (if (not with-editor--envvar)
       (apply fn name buffer program program-args)
     (when (file-remote-p default-directory)
@@ -560,6 +573,9 @@ commands to use the current Emacs instance as \"the editor\".
 
 This works in `shell-mode', `term-mode' and `eshell-mode'."
   (interactive (list (with-editor-read-envvar)))
+  ;; TODO here?
+  (require 'tramp)
+  (require 'tramp-sh nil t)
   (cond
    ((derived-mode-p 'comint-mode 'term-mode)
     (let* ((process (get-buffer-process (current-buffer)))
