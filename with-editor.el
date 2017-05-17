@@ -8,7 +8,7 @@
 ;; Author: Jonas Bernoulli <jonas@bernoul.li>
 ;; Maintainer: Jonas Bernoulli <jonas@bernoul.li>
 
-;; Package-Requires: ((emacs "24.4") (async "1.9") (dash "2.13.0"))
+;; Package-Requires: ((emacs "24.4") (async "1.9")
 ;; Keywords: tools
 ;; Homepage: https://github.com/magit/with-editor
 
@@ -80,7 +80,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'dash)
 (require 'server)
 (require 'tramp)
 (require 'tramp-sh nil t)
@@ -108,8 +107,7 @@
 
 (defun with-editor-locate-emacsclient ()
   "Search for a suitable Emacsclient executable."
-  (--if-let (with-editor-locate-emacsclient-1 (with-editor-emacsclient-path) 3)
-      it
+  (or (with-editor-locate-emacsclient-1 (with-editor-emacsclient-path) 3)
     (display-warning 'with-editor (format "\
 Cannot determine a suitable Emacsclient
 
@@ -119,7 +117,7 @@ please see https://github.com/magit/magit/wiki/Emacsclient."))
     nil))
 
 (defun with-editor-locate-emacsclient-1 (path depth)
-  (let* ((version-lst (-take depth (split-string emacs-version "\\.")))
+  (let* ((version-lst (cl-subseq (split-string emacs-version "\\.") 0 depth))
          (version-reg (concat "^" (mapconcat #'identity version-lst "\\."))))
     (or (locate-file-internal
          "emacsclient" path
@@ -140,8 +138,9 @@ please see https://github.com/magit/magit/wiki/Emacsclient."))
              (with-editor-locate-emacsclient-1 path (1- depth))))))
 
 (defun with-editor-emacsclient-version (exec)
-  (-when-let (1st-line (car (process-lines exec "--version")))
-    (cadr (split-string 1st-line))))
+  (let ((1st-line (car (process-lines exec "--version"))))
+    (when 1st-line
+      (cadr (split-string 1st-line)))))
 
 (defun with-editor-emacsclient-path ()
   (let ((path exec-path))
@@ -444,8 +443,8 @@ ENVVAR is provided then bind that environment variable instead.
 
 (defun with-editor-server-window ()
   (or (and buffer-file-name
-           (cdr (--first (string-match-p (car it) buffer-file-name)
-                         with-editor-server-window-alist)))
+           (cdr (cl-find-if (lambda (it) (string-match-p (car it) buffer-file-name))
+                            with-editor-server-window-alist)))
       server-window))
 
 (defun server-switch-buffer--with-editor-server-window-alist
@@ -545,8 +544,8 @@ which may or may not insert the text into the PROCESS' buffer."
     (files _proc &optional _nowait)
   (dolist (file files)
     (setq  file (car file))
-    (when (--any (string-match-p it file)
-                 with-editor-file-name-history-exclude)
+    (when (cl-find-if (lambda (it) (string-match-p it file))
+                      with-editor-file-name-history-exclude)
       (setq file-name-history (delete file file-name-history)))))
 
 ;;; Augmentations
@@ -662,10 +661,10 @@ else like the former."
 (defun with-editor-shell-command-read-args (prompt &optional async)
   (let ((command (read-shell-command
                   prompt nil nil
-                  (--when-let (or buffer-file-name
-                                  (and (eq major-mode 'dired-mode)
-                                       (dired-get-filename nil t)))
-                    (file-relative-name it)))))
+                  (let ((it (or buffer-file-name
+                                (and (eq major-mode 'dired-mode)
+                                     (dired-get-filename nil t)))))
+                    (when it (file-relative-name it))))))
     (list command
           (if (or async (setq async (string-match-p "&[ \t]*\\'" command)))
               (< (prefix-numeric-value current-prefix-arg) 0)
@@ -733,14 +732,14 @@ See info node `(with-editor)Debugging' for instructions."
      (format "  server-name: %s\n" server-name)
      (format "  server-socket-dir: %s\n" server-socket-dir))
     (if (and server-socket-dir (file-accessible-directory-p server-socket-dir))
-        (--each (directory-files server-socket-dir nil "^[^.]")
-          (insert (format "    %s\n" it)))
+        (mapc (lambda (it) (insert (format "    %s\n" it)))
+              (directory-files server-socket-dir nil "^[^.]"))
       (insert (format "    %s: not an accessible directory\n"
                       (if server-use-tcp "WARNING" "ERROR"))))
     (insert (format "  server-auth-dir: %s\n" server-auth-dir))
     (if (file-accessible-directory-p server-auth-dir)
-        (--each (directory-files server-auth-dir nil "^[^.]")
-          (insert (format "    %s\n" it)))
+        (mapc (lambda (it) (insert (format "    %s\n" it)))
+              (directory-files server-auth-dir nil "^[^.]"))
       (insert (format "    %s: not an accessible directory\n"
                       (if server-use-tcp "ERROR" "WARNING"))))
     (let ((val with-editor-emacsclient-executable)
@@ -759,12 +758,12 @@ See info node `(with-editor)Debugging' for instructions."
             (format "  $PATH: %S\n" (getenv "PATH"))
             (format "  exec-path: %s\n" exec-path))
     (insert (format "  with-editor-emacsclient-path:\n"))
-    (--each (with-editor-emacsclient-path)
-      (insert (format "    %s (%s)\n" it (car (file-attributes it))))
-      (when (file-directory-p it)
-        (dolist (exec (directory-files it t "emacsclient"))
-          (insert (format "      %s (%s)\n" exec
-                          (with-editor-emacsclient-version exec))))))))
+    (mapc (lambda (it) (insert (format "    %s (%s)\n" it (car (file-attributes it))))
+            (when (file-directory-p it)
+              (dolist (exec (directory-files it t "emacsclient"))
+                (insert (format "      %s (%s)\n" exec
+                                (with-editor-emacsclient-version exec))))))
+          (with-editor-emacsclient-path))))
 
 (defconst with-editor-font-lock-keywords
   '(("(\\(with-\\(?:git-\\)?editor\\)\\_>" (1 'font-lock-keyword-face))))
